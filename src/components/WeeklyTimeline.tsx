@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import type { WeeklyDigestItem, WeeklyDigestSection } from "@/types/weekly-digest";
 import { MOCK_SKILL_AGENT_ITEMS } from "@/lib/mock-data";
@@ -45,36 +45,56 @@ function formatCount(n: number): string {
     return String(n);
 }
 
+/**
+ * 拉取后端 3 栏目（news / paper / project）并 flat 合并。
+ * 校验 res.ok，非 2xx 或数据异常时 fail fast 抛错，不吞异常。
+ */
+async function fetchBackendSections(issue?: number | null): Promise<WeeklyDigestItem[]> {
+    const query = issue ? `&issue=${issue}` : "";
+    const results = await Promise.all(
+        BACKEND_SECTIONS.map((s) =>
+            fetch(`/api/weekly-digest?section=${s}&limit=${FETCH_LIMIT}${query}`, {
+                cache: "no-store",
+            }).then(async (r) => {
+                if (!r.ok) {
+                    throw new Error(`weekly-digest ${s} request failed: ${r.status}`);
+                }
+                const data = await r.json();
+                return data?.success && Array.isArray(data.data) ? data.data : [];
+            })
+        )
+    );
+    return results.flat();
+}
+
 export function WeeklyTimeline() {
     const [allItems, setAllItems] = useState<WeeklyDigestItem[]>([]);
     const [issues, setIssues] = useState<number[]>([]);
     const [activeTab, setActiveTab] = useState<TabKey>("all");
     const [selectedIssue, setSelectedIssue] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
+    /** 请求序号守卫：防止期号快速切换时旧请求迟到覆盖新数据 */
+    const issueSeqRef = useRef(0);
 
     // 首次加载：期号列表 + 后端 3 栏目并行拉，注入 mock Skills
     useEffect(() => {
         let cancelled = false;
         async function loadAll() {
             try {
-                const [issuesRes, ...sectionRes] = await Promise.all([
-                    fetch("/api/weekly-digest/issues", { cache: "no-store" }),
-                    ...BACKEND_SECTIONS.map((s) =>
-                        fetch(`/api/weekly-digest?section=${s}&limit=${FETCH_LIMIT}`, {
-                            cache: "no-store",
-                        }).then((r) => r.json())
-                    ),
+                const issuesRes = await fetch("/api/weekly-digest/issues", { cache: "no-store" });
+                if (!issuesRes.ok) {
+                    throw new Error(`weekly-digest/issues request failed: ${issuesRes.status}`);
+                }
+                const issuesData = await issuesRes.json();
+
+                const [backend, issuesResult] = await Promise.all([
+                    fetchBackendSections(),
+                    issuesData,
                 ]);
 
-                const issuesData = await issuesRes.json();
-                if (!cancelled && issuesData.success && Array.isArray(issuesData.data)) {
-                    setIssues(issuesData.data);
+                if (!cancelled && issuesResult.success && Array.isArray(issuesResult.data)) {
+                    setIssues(issuesResult.data);
                 }
-
-                const backend = BACKEND_SECTIONS.map((s, idx) => {
-                    const res = sectionRes[idx];
-                    return res?.success && Array.isArray(res.data) ? res.data : [];
-                }).flat();
 
                 if (!cancelled) {
                     setAllItems([...MOCK_SKILL_AGENT_ITEMS, ...backend]);
@@ -93,26 +113,20 @@ export function WeeklyTimeline() {
 
     // 切换期号：仅重拉后端栏目，mock Skills 保持不变
     const loadByIssue = async (issue: number | null) => {
-        setSelectedIssue(issue);
+        const seq = ++issueSeqRef.current;
         setLoading(true);
         try {
-            const results = await Promise.all(
-                BACKEND_SECTIONS.map((s) =>
-                    fetch(
-                        `/api/weekly-digest?section=${s}&limit=${FETCH_LIMIT}${issue ? `&issue=${issue}` : ""}`,
-                        { cache: "no-store" }
-                    ).then((r) => r.json())
-                )
-            );
-            const backend = BACKEND_SECTIONS.map((_s, idx) => {
-                const res = results[idx];
-                return res?.success && Array.isArray(res.data) ? res.data : [];
-            }).flat();
+            const backend = await fetchBackendSections(issue);
+            // 旧请求迟到时丢弃，不覆盖新数据
+            if (seq !== issueSeqRef.current) return;
             setAllItems([...MOCK_SKILL_AGENT_ITEMS, ...backend]);
+            setSelectedIssue(issue);
         } catch (e) {
             console.error("WeeklyTimeline issue switch error:", e);
+            // 失败时不更新 selectedIssue，UI 仍显示上一次成功数据
+            if (seq !== issueSeqRef.current) return;
         } finally {
-            setLoading(false);
+            if (seq === issueSeqRef.current) setLoading(false);
         }
     };
 
@@ -271,7 +285,7 @@ function TimelineCard({ item }: { item: WeeklyDigestItem }) {
                         {item.source || item.sourceId || "来源"}
                     </span>
                     <ExternalLink
-                        className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-0.5 shrink-0"
+                        className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-all group-hover:translate-x-0.5 group-focus-visible:translate-x-0.5 shrink-0"
                     />
                 </div>
 
