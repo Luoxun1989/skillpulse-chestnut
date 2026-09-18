@@ -1,12 +1,8 @@
-import { WeeklyDigestBoard } from "@/components/WeeklyDigestBoard";
+import { WeeklyTimeline } from "@/components/WeeklyTimeline";
 
-/**
- * 首页：Hero 宣传语 + 周刊四栏目
- */
 export default function Home() {
     return (
         <>
-            {/* Hero */}
             <section className="py-8 px-4 mb-4">
                 <div className="max-w-7xl mx-auto text-center">
                     <h1 className="text-2xl md:text-3xl font-black tracking-tight">
@@ -16,10 +12,8 @@ export default function Home() {
                     </h1>
                 </div>
             </section>
-
-            {/* 周刊四栏目 */}
             <div className="max-w-7xl mx-auto pb-8">
-                <WeeklyDigestBoard />
+                <WeeklyTimeline />
             </div>
         </>
     );
