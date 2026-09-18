@@ -9,19 +9,19 @@ export interface DateGroup {
 
 /**
  * 计算 a（参考时刻）相对 b 的整天（日历日）差，忽略时分秒。
- * 以 UTC 日历日为单位，与测试用例（UTC 日期）对齐。
+ * 基于本地时区日历日、按整天计算（与 groupByDate/formatRelativeTime 共用）。
  */
 function dayDiff(a: Date, b: Date): number {
-    const aStart = Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate());
-    const bStart = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate());
-    return Math.round((aStart - bStart) / 86400000);
+    const aStart = new Date(a.getFullYear(), a.getMonth(), a.getDate());
+    const bStart = new Date(b.getFullYear(), b.getMonth(), b.getDate());
+    return Math.round((aStart.getTime() - bStart.getTime()) / 86400000);
 }
 
-/** 将日期格式化为 "YYYY-MM-DD"（基于 UTC 字段保持稳定） */
+/** 将日期格式化为当地 "YYYY-MM-DD" */
 function formatDateKey(d: Date): string {
-    const y = d.getUTCFullYear();
-    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-    const day = String(d.getUTCDate()).padStart(2, "0");
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
 }
 
