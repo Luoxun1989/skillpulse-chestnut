@@ -108,3 +108,19 @@ export function formatRelativeTime(dateStr: string, now: Date = new Date()): str
     }
     return `${diff} 天前`;
 }
+
+/**
+ * 加权混合分：stars/comments/likes 三信号综合，用于热榜排序。
+ * 缺失字段按 0 处理，避免 null 参与算术。
+ */
+export function engagementScore(item: WeeklyDigestItem): number {
+    const stars = item.stars ?? 0;
+    const comments = item.commentsCount ?? 0;
+    const likes = item.likesCount ?? 0;
+    return stars + comments + likes * 0.5;
+}
+
+/** 取混合分最高的前 n 条作为热榜（不改原数组） */
+export function rankTop(items: WeeklyDigestItem[], n: number): WeeklyDigestItem[] {
+    return [...items].sort((a, b) => engagementScore(b) - engagementScore(a)).slice(0, n);
+}

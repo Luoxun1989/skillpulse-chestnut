@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import type { WeeklyDigestItem, WeeklyDigestSection } from "@/types/weekly-digest";
 import { MOCK_SKILL_AGENT_ITEMS } from "@/lib/mock-data";
-import { groupByDate, formatRelativeTime } from "@/lib/timeline";
+import { groupByDate, formatRelativeTime, rankTop, engagementScore } from "@/lib/timeline";
 import type { DateGroup } from "@/lib/timeline";
 
 /**
@@ -142,7 +142,7 @@ export function WeeklyTimeline() {
     const countByTab = (key: TabKey): number =>
         key === "all" ? allItems.length : allItems.filter((i) => i.section === key).length;
 
-    const maxIssue = issues.length > 0 ? Math.max(...issues) : selectedIssue ?? null;
+    const topItems = rankTop(allItems, 5);
 
     return (
         <div className="px-4">
@@ -150,9 +150,11 @@ export function WeeklyTimeline() {
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
                 countByTab={countByTab}
+            />
+            <Toolbar
+                topItems={topItems}
                 issues={issues}
                 selectedIssue={selectedIssue}
-                maxIssue={maxIssue}
                 onIssueChange={loadByIssue}
             />
             <TimelineList groups={groups} />
@@ -160,78 +162,128 @@ export function WeeklyTimeline() {
     );
 }
 
-/** Tab 横排 + 期号下拉 */
+/** Tab 横排（mobile 横向滚动） */
 function TimelineTabs({
     activeTab,
     onTabChange,
     countByTab,
-    issues,
-    selectedIssue,
-    maxIssue,
-    onIssueChange,
 }: {
     activeTab: TabKey;
     onTabChange: (tab: TabKey) => void;
     countByTab: (key: TabKey) => number;
-    issues: number[];
-    selectedIssue: number | null;
-    maxIssue: number | null;
-    onIssueChange: (issue: number | null) => void;
 }) {
     return (
-        <div className="flex items-center justify-between gap-3 mb-6">
-            {/* Tab 横排（mobile 横向滚动） */}
-            <div className="flex items-center gap-1 overflow-x-auto">
-                {TABS.map((tab) => {
-                    const active = tab.key === activeTab;
-                    return (
-                        <button
-                            key={tab.key}
-                            type="button"
-                            onClick={() => onTabChange(tab.key)}
-                            className={`shrink-0 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                                active
-                                    ? "bg-primary/10 text-primary"
-                                    : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
-                            }`}
-                        >
-                            {tab.label} ({countByTab(tab.key)})
-                        </button>
-                    );
-                })}
-            </div>
-
-            {/* 期号下拉 */}
-            <select
-                value={selectedIssue ?? ""}
-                onChange={(e) => {
-                    const v = e.target.value;
-                    onIssueChange(v ? parseInt(v) : null);
-                }}
-                className="shrink-0 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1.5 bg-white dark:bg-slate-900 text-sm"
-            >
-                <option value="">第 {maxIssue ?? ""} 期</option>
-                {issues.map((issue) => (
-                    <option key={issue} value={issue}>
-                        第 {issue} 期
-                    </option>
-                ))}
-            </select>
+        <div className="flex items-center gap-1 overflow-x-auto mb-3">
+            {TABS.map((tab) => {
+                const active = tab.key === activeTab;
+                return (
+                    <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => onTabChange(tab.key)}
+                        className={`shrink-0 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                            active
+                                ? "bg-primary/10 text-primary"
+                                : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                        }`}
+                    >
+                        {tab.label} ({countByTab(tab.key)})
+                    </button>
+                );
+            })}
         </div>
     );
 }
 
-/** 时间线列表：外层竖线，按日期分组渲染 */
+/** Toolbar 区：本周热榜 + 往期回顾 两个卡片（桌面横排，移动端竖排） */
+function Toolbar({
+    topItems,
+    issues,
+    selectedIssue,
+    onIssueChange,
+}: {
+    topItems: WeeklyDigestItem[];
+    issues: number[];
+    selectedIssue: number | null;
+    onIssueChange: (issue: number | null) => void;
+}) {
+    const sortedIssues = [...issues].sort((a, b) => b - a);
+    return (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+            {/* 本周热榜 */}
+            <section className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
+                <h2 className="text-sm font-semibold mb-2 text-slate-900 dark:text-white">
+                    🔥 本周热榜
+                </h2>
+                <ol className="space-y-1">
+                    {topItems.length === 0 && (
+                        <li className="text-sm text-slate-400">暂无数据</li>
+                    )}
+                    {topItems.map((item, idx) => (
+                        <li key={item.id}>
+                            <a
+                                href={item.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="group flex items-center gap-2 text-sm hover:text-primary transition-colors"
+                            >
+                                <span className="w-5 text-center shrink-0 font-medium text-slate-400">
+                                    {idx + 1}
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-slate-700 dark:text-slate-300 group-hover:underline">
+                                        {item.title}
+                                    </span>
+                                </span>
+                                <span className="shrink-0 text-xs text-slate-400">
+                                    {formatCount(Math.round(engagementScore(item)))}
+                                </span>
+                            </a>
+                        </li>
+                    ))}
+                </ol>
+            </section>
+
+            {/* 往期回顾 */}
+            <section className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
+                <h2 className="text-sm font-semibold mb-2 text-slate-900 dark:text-white">
+                    📅 往期回顾
+                </h2>
+                <div className="flex flex-wrap gap-2">
+                    {sortedIssues.map((issue) => {
+                        const active = issue === selectedIssue;
+                        return (
+                            <button
+                                key={issue}
+                                type="button"
+                                onClick={() => onIssueChange(active ? null : issue)}
+                                className={`shrink-0 px-3 py-1 rounded-lg text-sm border transition-colors ${
+                                    active
+                                        ? "bg-primary text-primary-foreground border-primary"
+                                        : "border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                                }`}
+                            >
+                                第 {issue} 期
+                            </button>
+                        );
+                    })}
+                </div>
+            </section>
+        </div>
+    );
+}
+
+/** 时间线列表：按日期分组，组间上下叠，组内双列 */
 function TimelineList({ groups }: { groups: DateGroup[] }) {
     if (groups.length === 0) {
         return <p className="text-center text-slate-400 text-base py-8">暂无内容</p>;
     }
     return (
-        <div className="border-l border-slate-200 dark:border-slate-800 pl-4">
+        <div>
             {groups.map((group) => (
                 <div key={group.key} className="mb-6">
                     <DateGroupHeader group={group} />
-                    <div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {group.items.map((item) => (
                             <TimelineCard key={item.id} item={item} />
                         ))}
@@ -260,7 +312,7 @@ function DateGroupHeader({ group }: { group: DateGroup }) {
     );
 }
 
-/** 单条 item（无边框列表项） */
+/** 单条 item（带边框卡片） */
 function TimelineCard({ item }: { item: WeeklyDigestItem }) {
     const style = SECTION_STYLES[item.section];
     const relativeTime = item.publishedDate
@@ -272,7 +324,7 @@ function TimelineCard({ item }: { item: WeeklyDigestItem }) {
             href={item.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="group flex items-start gap-3 py-3 -mx-2 px-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+            className="group flex items-start gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-sm transition-all"
         >
             {/* 左侧彩色 dot */}
             <span className={`mt-2 w-2 h-2 rounded-full ${style.dot} shrink-0`} />
@@ -290,7 +342,7 @@ function TimelineCard({ item }: { item: WeeklyDigestItem }) {
                 </div>
 
                 {/* 标题 */}
-                <h3 className="font-semibold text-base text-slate-900 dark:text-white">
+                <h3 className="font-semibold text-base text-slate-900 dark:text-white leading-snug">
                     {item.title}
                 </h3>
 
@@ -315,17 +367,23 @@ function TimelineCard({ item }: { item: WeeklyDigestItem }) {
 
 /** loading 骨架屏 */
 function TimelineSkeleton() {
-    const fakeGroups = [0, 1, 2];
     return (
-        <div className="animate-pulse border-l border-slate-200 dark:border-slate-800 pl-4">
-            {fakeGroups.map((g) => (
-                <div key={g} className="mb-6">
+        <div className="animate-pulse space-y-4">
+            {[0, 1, 2].map((g) => (
+                <div key={g}>
                     {/* 标题条 */}
                     <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-24 mb-2" />
-                    {/* 2 行内容条 */}
-                    <div className="space-y-2">
-                        <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full" />
-                        <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-2/3" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {[0, 1].map((c) => (
+                            <div
+                                key={c}
+                                className="rounded-lg border border-slate-200 dark:border-slate-800 p-3 space-y-2"
+                            >
+                                <div className="h-3 w-16 bg-slate-200 dark:bg-slate-700 rounded" />
+                                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-full" />
+                                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-2/3" />
+                            </div>
+                        ))}
                     </div>
                 </div>
             ))}

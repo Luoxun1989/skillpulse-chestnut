@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { mixSort, groupByDate, formatRelativeTime, DateGroup } from "../src/lib/timeline";
+import {
+    mixSort,
+    groupByDate,
+    formatRelativeTime,
+    engagementScore,
+    rankTop,
+} from "../src/lib/timeline";
 import type { WeeklyDigestItem } from "../src/types/weekly-digest";
 
 // 用本地时间构造，保证任意本地时区下日历日稳定（不依赖 UTC 解析的时区偏移）。
@@ -148,5 +154,56 @@ describe("formatRelativeTime", () => {
 
     it("9 天前 → 9 天前", () => {
         expect(formatRelativeTime(dateStr(2026, 9, 8), NOW)).toEqual("9 天前");
+    });
+});
+
+describe("engagementScore", () => {
+    it("三种信号加权：stars + comments + likes*0.5", () => {
+        const i = item({ stars: 100, commentsCount: 20, likesCount: 8 });
+        expect(engagementScore(i)).toEqual(100 + 20 + 8 * 0.5); // 124
+    });
+
+    it("缺失字段按 0 处理", () => {
+        const i = item({ stars: null, commentsCount: null, likesCount: null });
+        expect(engagementScore(i)).toEqual(0);
+    });
+
+    it("部分字段缺失不影响其余", () => {
+        const i = item({ stars: 50, commentsCount: 0, likesCount: 10 });
+        expect(engagementScore(i)).toEqual(50 + 0 + 10 * 0.5); // 55
+    });
+});
+
+describe("rankTop", () => {
+    it("按混合分降序", () => {
+        const low = item({ id: "low", stars: 10 });
+        const high = item({ id: "high", stars: 999 });
+        const mid = item({ id: "mid", stars: 500 });
+
+        const result = rankTop([low, mid, high], 3);
+        expect(result.map((i) => i.id)).toEqual(["high", "mid", "low"]);
+    });
+
+    it("只返回前 n 条", () => {
+        const items = [
+            item({ id: "a", stars: 1 }),
+            item({ id: "b", stars: 2 }),
+            item({ id: "c", stars: 3 }),
+            item({ id: "d", stars: 4 }),
+            item({ id: "e", stars: 5 }),
+        ];
+        const result = rankTop(items, 3);
+        expect(result).toHaveLength(3);
+        expect(result[0].id).toEqual("e");
+    });
+
+    it("不修改原数组", () => {
+        const items = [
+            item({ id: "a", stars: 1 }),
+            item({ id: "b", stars: 2 }),
+        ];
+        const before = items.map((i) => i.id).join(",");
+        rankTop(items, 2);
+        expect(items.map((i) => i.id).join(",")).toEqual(before);
     });
 });
