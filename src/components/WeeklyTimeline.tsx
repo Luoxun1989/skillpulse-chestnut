@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { ExternalLink, X } from "lucide-react";
+import Link from "next/link";
 import type { WeeklyDigestItem, WeeklyDigestSection } from "@/types/weekly-digest";
 import { MOCK_SKILL_AGENT_ITEMS } from "@/lib/mock-data";
 import { groupByDate, formatRelativeTime, rankTop, engagementScore } from "@/lib/timeline";
@@ -68,13 +70,21 @@ async function fetchBackendSections(issue?: number | null): Promise<WeeklyDigest
 }
 
 export function WeeklyTimeline() {
+    const searchParams = useSearchParams();
+    const q = (searchParams.get("q") || "").trim();
+
     const [allItems, setAllItems] = useState<WeeklyDigestItem[]>([]);
     const [issues, setIssues] = useState<number[]>([]);
     const [activeTab, setActiveTab] = useState<TabKey>("all");
     const [selectedIssue, setSelectedIssue] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
+    /** 搜索结果 */
+    const [searchResults, setSearchResults] = useState<WeeklyDigestItem[] | null>(null);
+    const [searchLoading, setSearchLoading] = useState(false);
     /** 请求序号守卫：防止期号快速切换时旧请求迟到覆盖新数据 */
     const issueSeqRef = useRef(0);
+    /** 搜索请求序号守卫 */
+    const searchSeqRef = useRef(0);
 
     // 首次加载：期号列表 + 后端 3 栏目并行拉，注入 mock Skills
     useEffect(() => {
@@ -130,6 +140,49 @@ export function WeeklyTimeline() {
         }
     };
 
+    // 搜索：q 非空时拉全库搜索结果；q 清空恢复时间线
+    useEffect(() => {
+        const seq = ++searchSeqRef.current;
+        if (!q) {
+            setSearchResults(null);
+            setSearchLoading(false);
+            return;
+        }
+        setSearchLoading(true);
+        setSearchResults(null);
+        fetch(`/api/weekly-digest/search?q=${encodeURIComponent(q)}`, { cache: "no-store" })
+            .then(async (r) => {
+                if (!r.ok) throw new Error(`search request failed: ${r.status}`);
+                const data = await r.json();
+                if (seq !== searchSeqRef.current) return;
+                setSearchResults(data?.success && Array.isArray(data.data) ? data.data : []);
+            })
+            .catch((e) => {
+                console.error("WeeklyTimeline search error:", e);
+                if (seq === searchSeqRef.current) setSearchResults([]);
+            })
+            .finally(() => {
+                if (seq === searchSeqRef.current) setSearchLoading(false);
+            });
+        return () => {
+            /* seq guard handles cleanup */
+        };
+    }, [q]);
+
+    // 搜索视图：q 非空时展示搜索结果，隐藏常规 Toolbar/Tab
+    if (q) {
+        return (
+            <div className="px-4">
+                <SearchHeader q={q} />
+                {searchLoading && !searchResults ? (
+                    <TimelineSkeleton />
+                ) : (
+                    <SearchResults items={searchResults ?? []} q={q} />
+                )}
+            </div>
+        );
+    }
+
     if (loading) {
         return <TimelineSkeleton />;
     }
@@ -173,7 +226,7 @@ function TimelineTabs({
     countByTab: (key: TabKey) => number;
 }) {
     return (
-        <div className="flex items-center gap-1 overflow-x-auto mb-3">
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-3 -mx-1 px-1 scrollbar-thin">
             {TABS.map((tab) => {
                 const active = tab.key === activeTab;
                 return (
@@ -181,16 +234,62 @@ function TimelineTabs({
                         key={tab.key}
                         type="button"
                         onClick={() => onTabChange(tab.key)}
-                        className={`shrink-0 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                        className={`shrink-0 px-3 py-1.5 rounded-full text-sm border transition-colors ${
                             active
-                                ? "bg-primary/10 text-primary"
-                                : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white"
                         }`}
                     >
-                        {tab.label} ({countByTab(tab.key)})
+                        {tab.label}
+                        <span
+                            className={`ml-1 text-xs ${
+                                active
+                                    ? "text-primary-foreground/70"
+                                    : "text-slate-400"
+                            }`}
+                        >
+                            {countByTab(tab.key)}
+                        </span>
                     </button>
                 );
             })}
+        </div>
+    );
+}
+
+/** 搜索结果头部：展示搜索词 + 一键清空返回时间线 */
+function SearchHeader({ q }: { q: string }) {
+    return (
+        <div className="flex items-center justify-between gap-3 mb-3 mt-1">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
+                <span className="w-2 h-2 rounded-full bg-primary" />
+                <span>搜索：{q}</span>
+            </h2>
+            <Link
+                href="/"
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-slate-700 px-3 py-1 text-sm text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
+            >
+                <X className="w-3.5 h-3.5" />
+                <span>返回时间线</span>
+            </Link>
+        </div>
+    );
+}
+
+/** 搜索结果列表：复用卡片样式展示后端全库匹配 */
+function SearchResults({ items, q }: { items: WeeklyDigestItem[]; q: string }) {
+    if (items.length === 0) {
+        return (
+            <p className="text-center text-slate-400 text-base py-12">
+                未找到与「{q}」相关的内容
+            </p>
+        );
+    }
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {items.map((item) => (
+                <TimelineCard key={item.id} item={item} />
+            ))}
         </div>
     );
 }
