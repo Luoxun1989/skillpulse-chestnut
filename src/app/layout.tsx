@@ -16,7 +16,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-    title: "SkillPulse · AI Skills 周刊",
+    title: "SkillPulse · AI 行业高价值内容汇聚平台",
     description:
         "精选全球最实用的 AI Skills · 每周一期 · 行业动态 / 热门项目 / 精选论文 / 社区热议",
 };
