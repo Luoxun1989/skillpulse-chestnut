@@ -5,22 +5,18 @@ import { useSearchParams } from "next/navigation";
 import { ExternalLink, X } from "lucide-react";
 import Link from "next/link";
 import type { WeeklyDigestItem, WeeklyDigestSection } from "@/types/weekly-digest";
-import { MOCK_SKILL_AGENT_ITEMS } from "@/lib/mock-data";
 import { groupByDate, formatRelativeTime, rankTop, engagementScore } from "@/lib/timeline";
 import type { DateGroup } from "@/lib/timeline";
 
 /**
  * 首页周刊时间线流 + 顶部 Tab 横排
- * 数据来源：
- *   news / paper / project：/api/weekly-digest?section=xxx
- *   community（Skills）：前端 mock 数据（后端暂无该 section）
+ * 数据来源：4 栏目全部走 /api/weekly-digest?section=xxx（community 已入库到 community_item）
  * 交互：
  *   Tab 本地筛选，不重新请求
- *   期号切换仅重拉后端栏目，mock Skills 保持不变
+ *   期号切换仅重拉后端
  */
 const FETCH_LIMIT = 10;
-/** community 走 mock，不走后端 */
-const BACKEND_SECTIONS: WeeklyDigestSection[] = ["news", "paper", "project"];
+const BACKEND_SECTIONS: WeeklyDigestSection[] = ["news", "paper", "project", "community"];
 
 type TabKey = "all" | WeeklyDigestSection;
 
@@ -107,7 +103,7 @@ export function WeeklyTimeline() {
                 }
 
                 if (!cancelled) {
-                    setAllItems([...MOCK_SKILL_AGENT_ITEMS, ...backend]);
+                    setAllItems(backend);
                     setLoading(false);
                 }
             } catch (e) {
@@ -129,7 +125,7 @@ export function WeeklyTimeline() {
             const backend = await fetchBackendSections(issue);
             // 旧请求迟到时丢弃，不覆盖新数据
             if (seq !== issueSeqRef.current) return;
-            setAllItems([...MOCK_SKILL_AGENT_ITEMS, ...backend]);
+            setAllItems(backend);
             setSelectedIssue(issue);
         } catch (e) {
             console.error("WeeklyTimeline issue switch error:", e);
