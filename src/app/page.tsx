@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { WeeklyTimeline } from "@/components/WeeklyTimeline";
 
 export default function Home() {
@@ -13,7 +14,9 @@ export default function Home() {
                 </div>
             </section>
             <div className="max-w-7xl mx-auto pb-8">
-                <WeeklyTimeline />
+                <Suspense fallback={null}>
+                    <WeeklyTimeline />
+                </Suspense>
             </div>
         </>
     );

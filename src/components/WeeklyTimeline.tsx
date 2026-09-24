@@ -43,6 +43,22 @@ function formatCount(n: number): string {
     return String(n);
 }
 
+/** Issue 标签格式化：
+ *  - n >= 19000101 视为 YYYYMMDD 日期数字 → "2026-09-23"
+ *  - 旧的 36/99/102-116 等保留为 "第 N 期"
+ */
+function formatIssueLabel(n: number): string {
+    if (n >= 19000101) {
+        const y = Math.floor(n / 10000);
+        const m = Math.floor((n / 100) % 100);
+        const d = n % 100;
+        return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    }
+    return `第 ${n} 期`;
+}
+
+const VISIBLE_ISSUE_STEP = 7;
+
 /**
  * 拉取后端 3 栏目（news / paper / project）并 flat 合并。
  * 校验 res.ok，非 2xx 或数据异常时 fail fast 抛错，不吞异常。
@@ -303,6 +319,9 @@ function Toolbar({
     onIssueChange: (issue: number | null) => void;
 }) {
     const sortedIssues = [...issues].sort((a, b) => b - a);
+    const [visibleIssueCount, setVisibleIssueCount] = useState(VISIBLE_ISSUE_STEP);
+    const visibleIssues = sortedIssues.slice(0, visibleIssueCount);
+    const hasMoreIssues = visibleIssueCount < sortedIssues.length;
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
             {/* 本周热榜 */}
@@ -345,7 +364,7 @@ function Toolbar({
                     📅 往期回顾
                 </h2>
                 <div className="flex flex-wrap gap-2">
-                    {sortedIssues.map((issue) => {
+                    {visibleIssues.map((issue) => {
                         const active = issue === selectedIssue;
                         return (
                             <button
@@ -358,10 +377,19 @@ function Toolbar({
                                         : "border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white"
                                 }`}
                             >
-                                第 {issue} 期
+                                {formatIssueLabel(issue)}
                             </button>
                         );
                     })}
+                    {hasMoreIssues && (
+                        <button
+                            type="button"
+                            onClick={() => setVisibleIssueCount((v) => v + VISIBLE_ISSUE_STEP)}
+                            className="shrink-0 px-3 py-1 rounded-lg text-sm border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white hover:border-solid transition-colors"
+                        >
+                            查看更多期 ↓
+                        </button>
+                    )}
                 </div>
             </section>
         </div>
